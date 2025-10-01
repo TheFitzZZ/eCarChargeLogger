@@ -3,7 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const meterRoutes = require('./routes/meters');
-const readingRoutes = require('./routes/readings');
+const sessionRoutes = require('./routes/sessions');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,7 +31,7 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/meters', meterRoutes);
-app.use('/api/readings', readingRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 // 404 handler
 app.use((req, res) => {

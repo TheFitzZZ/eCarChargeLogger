@@ -19,23 +19,31 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS meters (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
+    unit TEXT DEFAULT 'kWh',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS reading_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    price REAL NOT NULL,
+    notes TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS readings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
     meter_id INTEGER NOT NULL,
     value REAL NOT NULL,
-    price REAL NOT NULL,
     delta REAL,
-    cost REAL,
-    notes TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (meter_id) REFERENCES meters(id) ON DELETE CASCADE
+    FOREIGN KEY (session_id) REFERENCES reading_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (meter_id) REFERENCES meters(id) ON DELETE CASCADE,
+    UNIQUE(session_id, meter_id)
   );
 
+  CREATE INDEX IF NOT EXISTS idx_readings_session_id ON readings(session_id);
   CREATE INDEX IF NOT EXISTS idx_readings_meter_id ON readings(meter_id);
-  CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON readings(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_sessions_timestamp ON reading_sessions(timestamp);
 `);
 
 // Insert default meter if none exists

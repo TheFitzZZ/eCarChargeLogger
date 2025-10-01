@@ -13,13 +13,15 @@ import {
   CircularProgress,
   ToggleButtonGroup,
   ToggleButton,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { LineChart } from '@mui/x-charts/LineChart';
-import { metersApi, readingsApi } from '../api';
+import { metersApi, sessionsApi } from '../api';
 
 function StatisticsPage() {
   const [meters, setMeters] = useState([]);
-  const [selectedMeter, setSelectedMeter] = useState('');
+  const [selectedMeter, setSelectedMeter] = useState('all');
   const [statistics, setStatistics] = useState(null);
   const [trend, setTrend] = useState([]);
   const [groupBy, setGroupBy] = useState('day');
@@ -30,19 +32,14 @@ function StatisticsPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedMeter) {
-      loadStatistics();
-      loadTrend();
-    }
+    loadStatistics();
+    loadTrend();
   }, [selectedMeter, groupBy]);
 
   const loadMeters = async () => {
     try {
       const response = await metersApi.getAll();
       setMeters(response.data);
-      if (response.data.length > 0 && !selectedMeter) {
-        setSelectedMeter(response.data[0].id);
-      }
     } catch (error) {
       console.error('Failed to load meters', error);
     }
@@ -51,7 +48,12 @@ function StatisticsPage() {
   const loadStatistics = async () => {
     try {
       setLoading(true);
-      const response = await readingsApi.getStatistics(selectedMeter);
+      let response;
+      if (selectedMeter === 'all') {
+        response = await sessionsApi.getStatistics();
+      } else {
+        response = await sessionsApi.getMeterStatistics(selectedMeter);
+      }
       setStatistics(response.data);
     } catch (error) {
       console.error('Failed to load statistics', error);
@@ -62,7 +64,7 @@ function StatisticsPage() {
 
   const loadTrend = async () => {
     try {
-      const response = await readingsApi.getTrend(selectedMeter, groupBy, 30);
+      const response = await sessionsApi.getTrend(groupBy, 30);
       setTrend(response.data.reverse());
     } catch (error) {
       console.error('Failed to load trend', error);
@@ -94,16 +96,17 @@ function StatisticsPage() {
       </Typography>
 
       <Box sx={{ mb: 3 }}>
-        <FormControl sx={{ minWidth: 200 }}>
-          <InputLabel>Meter</InputLabel>
+        <FormControl sx={{ minWidth: 250 }}>
+          <InputLabel>View</InputLabel>
           <Select
             value={selectedMeter}
-            label="Meter"
+            label="View"
             onChange={(e) => setSelectedMeter(e.target.value)}
           >
+            <MenuItem value="all">All Meters Combined</MenuItem>
             {meters.map((meter) => (
               <MenuItem key={meter.id} value={meter.id}>
-                {meter.name}
+                {meter.name} Only
               </MenuItem>
             ))}
           </Select>
@@ -123,6 +126,7 @@ function StatisticsPage() {
                   title="Total Consumption"
                   value={statistics.total_consumption?.toFixed(2) || '0'}
                   unit="kWh"
+                  subtitle={selectedMeter === 'all' ? 'all meters' : ''}
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
@@ -134,18 +138,21 @@ function StatisticsPage() {
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
                 <StatCard
-                  title="Average Consumption"
-                  value={statistics.avg_consumption?.toFixed(2) || '0'}
+                  title={selectedMeter === 'all' ? 'Avg per Meter' : 'Avg Consumption'}
+                  value={selectedMeter === 'all' 
+                    ? statistics.avg_consumption_per_meter?.toFixed(2) || '0'
+                    : statistics.avg_consumption?.toFixed(2) || '0'}
                   unit="kWh"
                   subtitle="per reading"
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
                 <StatCard
-                  title="Average Cost"
-                  value={statistics.avg_cost?.toFixed(2) || '0'}
-                  unit="€"
-                  subtitle="per reading"
+                  title={selectedMeter === 'all' ? 'Total Sessions' : 'Total Readings'}
+                  value={selectedMeter === 'all'
+                    ? statistics.total_sessions || '0'
+                    : statistics.total_readings || '0'}
+                  unit=""
                 />
               </Grid>
             </Grid>

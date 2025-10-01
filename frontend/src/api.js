@@ -19,18 +19,20 @@ export const metersApi = {
   delete: (id) => api.delete(`/meters/${id}`),
 };
 
-// Readings API
-export const readingsApi = {
-  getAll: (meterId, limit = 100, offset = 0) => 
-    api.get('/readings', { params: { meter_id: meterId, limit, offset } }),
-  getById: (id) => api.get(`/readings/${id}`),
-  create: (data) => api.post('/readings', data),
-  update: (id, data) => api.put(`/readings/${id}`, data),
-  delete: (id) => api.delete(`/readings/${id}`),
-  getStatistics: (meterId, startDate, endDate) => 
-    api.get(`/readings/stats/${meterId}`, { params: { start_date: startDate, end_date: endDate } }),
-  getTrend: (meterId, groupBy = 'day', limit = 30) => 
-    api.get(`/readings/trend/${meterId}`, { params: { group_by: groupBy, limit } }),
+// Sessions API (replaces readings)
+export const sessionsApi = {
+  getAll: (limit = 100, offset = 0) => 
+    api.get('/sessions', { params: { limit, offset } }),
+  getById: (id) => api.get(`/sessions/${id}`),
+  create: (data) => api.post('/sessions', data),
+  update: (id, data) => api.put(`/sessions/${id}`, data),
+  delete: (id) => api.delete(`/sessions/${id}`),
+  getStatistics: (startDate, endDate) => 
+    api.get('/sessions/stats/all', { params: { start_date: startDate, end_date: endDate } }),
+  getMeterStatistics: (meterId, startDate, endDate) => 
+    api.get(`/sessions/stats/meter/${meterId}`, { params: { start_date: startDate, end_date: endDate } }),
+  getTrend: (groupBy = 'day', limit = 30) => 
+    api.get('/sessions/trend/all', { params: { group_by: groupBy, limit } }),
 };
 
 export default api;

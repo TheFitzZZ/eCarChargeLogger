@@ -5,10 +5,6 @@ import {
   Typography,
   TextField,
   Button,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Grid,
   Alert,
   Snackbar,
@@ -16,72 +12,68 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
-import { metersApi, readingsApi } from '../api';
-import ReadingsList from '../components/ReadingsList';
+import { metersApi, sessionsApi } from '../api';
+import SessionsList from '../components/SessionsList';
 
 function MainPage() {
   const [meters, setMeters] = useState([]);
-  const [selectedMeter, setSelectedMeter] = useState('');
-  const [readings, setReadings] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [newMeterDialogOpen, setNewMeterDialogOpen] = useState(false);
   const [newMeterName, setNewMeterName] = useState('');
   
   const [formData, setFormData] = useState({
-    value: '',
     price: '',
     notes: '',
+    meterValues: {},
   });
 
   const [lastPrice, setLastPrice] = useState(null);
 
   useEffect(() => {
     loadMeters();
+    loadSessions();
   }, []);
-
-  useEffect(() => {
-    if (selectedMeter) {
-      loadReadings();
-      loadLastPrice();
-    }
-  }, [selectedMeter]);
 
   const loadMeters = async () => {
     try {
       const response = await metersApi.getAll();
       setMeters(response.data);
-      if (response.data.length > 0 && !selectedMeter) {
-        setSelectedMeter(response.data[0].id);
-      }
+      
+      // Initialize meter values in form
+      const meterValues = {};
+      response.data.forEach(meter => {
+        meterValues[meter.id] = '';
+      });
+      setFormData(prev => ({ ...prev, meterValues }));
     } catch (error) {
       showSnackbar('Failed to load meters', 'error');
     }
   };
 
-  const loadReadings = async () => {
+  const loadSessions = async () => {
     try {
       setLoading(true);
-      const response = await readingsApi.getAll(selectedMeter, 50);
-      setReadings(response.data);
-    } catch (error) {
-      showSnackbar('Failed to load readings', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadLastPrice = async () => {
-    try {
-      const response = await readingsApi.getAll(selectedMeter, 1);
+      const response = await sessionsApi.getAll(50);
+      setSessions(response.data);
+      
+      // Set last price from most recent session
       if (response.data.length > 0) {
         setLastPrice(response.data[0].price);
         setFormData((prev) => ({ ...prev, price: response.data[0].price.toString() }));
       }
     } catch (error) {
-      console.error('Failed to load last price', error);
+      showSnackbar('Failed to load sessions', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -100,26 +92,60 @@ function MainPage() {
     });
   };
 
+  const handleMeterValueChange = (meterId, value) => {
+    setFormData({
+      ...formData,
+      meterValues: {
+        ...formData.meterValues,
+        [meterId]: value,
+      },
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedMeter) {
-      showSnackbar('Please select a meter', 'error');
+    
+    if (meters.length === 0) {
+      showSnackbar('Please add at least one meter first', 'error');
+      return;
+    }
+
+    // Check if all meters have values
+    const missingValues = meters.some(meter => !formData.meterValues[meter.id]);
+    if (missingValues) {
+      showSnackbar('Please enter readings for all meters', 'error');
       return;
     }
 
     try {
-      await readingsApi.create({
-        meter_id: selectedMeter,
-        value: parseFloat(formData.value),
+      // Prepare readings array
+      const readings = meters.map(meter => ({
+        meter_id: meter.id,
+        value: parseFloat(formData.meterValues[meter.id]),
+      }));
+
+      await sessionsApi.create({
         price: parseFloat(formData.price),
+        readings,
         notes: formData.notes || null,
       });
       
-      showSnackbar('Reading added successfully');
-      setFormData({ value: '', price: formData.price, notes: '' });
-      loadReadings();
+      showSnackbar('Reading session added successfully');
+      
+      // Reset meter values but keep price
+      const resetValues = {};
+      meters.forEach(meter => {
+        resetValues[meter.id] = '';
+      });
+      setFormData({ 
+        price: formData.price, 
+        notes: '', 
+        meterValues: resetValues 
+      });
+      
+      loadSessions();
     } catch (error) {
-      showSnackbar(error.response?.data?.error || 'Failed to add reading', 'error');
+      showSnackbar(error.response?.data?.error || 'Failed to add reading session', 'error');
     }
   };
 
@@ -130,183 +156,208 @@ function MainPage() {
     }
 
     try {
-      await metersApi.create(newMeterName);
+      const response = await metersApi.create(newMeterName);
       showSnackbar('Meter added successfully');
       setNewMeterDialogOpen(false);
       setNewMeterName('');
+      
+      // Add new meter to form values
+      setFormData(prev => ({
+        ...prev,
+        meterValues: {
+          ...prev.meterValues,
+          [response.data.id]: '',
+        },
+      }));
+      
       loadMeters();
     } catch (error) {
       showSnackbar(error.response?.data?.error || 'Failed to add meter', 'error');
     }
   };
 
-  const handleEditReading = async (id, data) => {
+  const handleEditSession = async (id, data) => {
     try {
-      await readingsApi.update(id, data);
-      showSnackbar('Reading updated successfully');
-      loadReadings();
+      await sessionsApi.update(id, data);
+      showSnackbar('Reading session updated successfully');
+      loadSessions();
     } catch (error) {
-      showSnackbar(error.response?.data?.error || 'Failed to update reading', 'error');
+      showSnackbar(error.response?.data?.error || 'Failed to update session', 'error');
     }
   };
 
-  const handleDeleteReading = async (id) => {
+  const handleDeleteSession = async (id) => {
     try {
-      await readingsApi.delete(id);
-      showSnackbar('Reading deleted successfully');
-      loadReadings();
+      await sessionsApi.delete(id);
+      showSnackbar('Reading session deleted successfully');
+      loadSessions();
     } catch (error) {
-      showSnackbar(error.response?.data?.error || 'Failed to delete reading', 'error');
+      showSnackbar(error.response?.data?.error || 'Failed to delete session', 'error');
     }
   };
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">
+          Dashboard
+        </Typography>
+        <Button
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => setNewMeterDialogOpen(true)}
+        >
+          Add Meter
+        </Button>
+      </Box>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Add New Reading
-            </Typography>
-            
-            <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <FormControl fullWidth>
-                      <InputLabel>Meter</InputLabel>
-                      <Select
-                        value={selectedMeter}
-                        label="Meter"
-                        onChange={(e) => setSelectedMeter(e.target.value)}
-                      >
+      {meters.length === 0 ? (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          No meters configured. Click "Add Meter" to create your first meter.
+        </Alert>
+      ) : (
+        <Grid container spacing={3}>
+          <Grid item xs={12} lg={6}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Add New Reading Session
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Enter current readings for all meters
+              </Typography>
+              
+              <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+                      Meter Readings
+                    </Typography>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Meter</TableCell>
+                          <TableCell>Current Reading (kWh)</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
                         {meters.map((meter) => (
-                          <MenuItem key={meter.id} value={meter.id}>
-                            {meter.name}
-                          </MenuItem>
+                          <TableRow key={meter.id}>
+                            <TableCell>{meter.name}</TableCell>
+                            <TableCell>
+                              <TextField
+                                required
+                                fullWidth
+                                size="small"
+                                type="number"
+                                value={formData.meterValues[meter.id] || ''}
+                                onChange={(e) => handleMeterValueChange(meter.id, e.target.value)}
+                                inputProps={{ step: '0.01', min: '0' }}
+                              />
+                            </TableCell>
+                          </TableRow>
                         ))}
-                      </Select>
-                    </FormControl>
+                      </TableBody>
+                    </Table>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      required
+                      type="number"
+                      label="Price per kWh (€)"
+                      name="price"
+                      value={formData.price}
+                      onChange={handleInputChange}
+                      inputProps={{ step: '0.0001', min: '0' }}
+                      helperText={lastPrice ? `Last: €${lastPrice.toFixed(4)}` : ''}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Notes (optional)"
+                      name="notes"
+                      value={formData.notes}
+                      onChange={handleInputChange}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
                     <Button
-                      variant="outlined"
-                      onClick={() => setNewMeterDialogOpen(true)}
-                      sx={{ minWidth: '120px' }}
+                      type="submit"
+                      variant="contained"
+                      fullWidth
+                      size="large"
                     >
-                      <AddIcon sx={{ mr: 0.5 }} /> Meter
+                      Add Reading Session
                     </Button>
-                  </Box>
+                  </Grid>
                 </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    required
-                    type="number"
-                    label="Meter Reading (kWh)"
-                    name="value"
-                    value={formData.value}
-                    onChange={handleInputChange}
-                    inputProps={{ step: '0.01', min: '0' }}
-                  />
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    required
-                    type="number"
-                    label="Price per kWh (€)"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleInputChange}
-                    inputProps={{ step: '0.0001', min: '0' }}
-                    helperText={lastPrice ? `Last: €${lastPrice.toFixed(4)}` : ''}
-                  />
-                </Grid>
-
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={2}
-                    label="Notes (optional)"
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleInputChange}
-                  />
-                </Grid>
-
-                <Grid item xs={12}>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    fullWidth
-                    size="large"
-                  >
-                    Add Reading
-                  </Button>
-                </Grid>
-              </Grid>
-            </Box>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Quick Stats
-            </Typography>
-            {readings.length > 0 && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Latest Reading
-                </Typography>
-                <Typography variant="h4">
-                  {readings[0].value.toLocaleString()} kWh
-                </Typography>
-                {readings[0].delta && (
-                  <>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                      Last Consumption
-                    </Typography>
-                    <Typography variant="h5">
-                      {readings[0].delta.toFixed(2)} kWh
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Cost: €{readings[0].cost?.toFixed(2)}
-                    </Typography>
-                  </>
-                )}
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                  Total Readings
-                </Typography>
-                <Typography variant="h5">
-                  {readings.length}
-                </Typography>
               </Box>
-            )}
-            {readings.length === 0 && (
-              <Alert severity="info" sx={{ mt: 2 }}>
-                No readings yet. Add your first reading to get started!
-              </Alert>
-            )}
-          </Paper>
-        </Grid>
+            </Paper>
+          </Grid>
 
-        <Grid item xs={12}>
-          <ReadingsList
-            readings={readings}
-            loading={loading}
-            onEdit={handleEditReading}
-            onDelete={handleDeleteReading}
-            onRefresh={loadReadings}
-          />
+          <Grid item xs={12} lg={6}>
+            <Paper sx={{ p: 3, height: '100%' }}>
+              <Typography variant="h6" gutterBottom>
+                Quick Stats
+              </Typography>
+              {sessions.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Latest Session
+                  </Typography>
+                  <Typography variant="body1" sx={{ mt: 1 }}>
+                    {new Date(sessions[0].timestamp).toLocaleString('de-DE')}
+                  </Typography>
+                  {sessions[0].total_delta && (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                        Last Total Consumption
+                      </Typography>
+                      <Typography variant="h4">
+                        {sessions[0].total_delta.toFixed(2)} kWh
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Cost: €{sessions[0].total_cost?.toFixed(2)}
+                      </Typography>
+                    </>
+                  )}
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                    Total Sessions
+                  </Typography>
+                  <Typography variant="h5">
+                    {sessions.length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    {sessions[0].meter_count} meters tracked
+                  </Typography>
+                </Box>
+              )}
+              {sessions.length === 0 && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  No reading sessions yet. Add your first reading to get started!
+                </Alert>
+              )}
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12}>
+            <SessionsList
+              sessions={sessions}
+              meters={meters}
+              loading={loading}
+              onEdit={handleEditSession}
+              onDelete={handleDeleteSession}
+              onRefresh={loadSessions}
+            />
+          </Grid>
         </Grid>
-      </Grid>
+      )}
 
       <Dialog open={newMeterDialogOpen} onClose={() => setNewMeterDialogOpen(false)}>
         <DialogTitle>Add New Meter</DialogTitle>
