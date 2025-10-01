@@ -8,7 +8,12 @@ const router = express.Router();
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    // Format error messages for better display
+    const formattedErrors = errors.array().map(err => `${err.path || err.param}: ${err.msg}`);
+    return res.status(400).json({ 
+      error: formattedErrors.join('; '),
+      errors: errors.array() 
+    });
   }
   next();
 };
@@ -50,12 +55,12 @@ router.get('/:id',
 
 // CREATE new session with readings for all meters
 router.post('/',
-  body('price').isFloat({ min: 0 }),
-  body('readings').isArray({ min: 1 }),
-  body('readings.*.meter_id').isInt({ min: 1 }),
-  body('readings.*.value').isFloat({ min: 0 }),
-  body('notes').optional().isString().trim().isLength({ max: 500 }),
-  body('timestamp').optional().isISO8601(),
+  body('price').isFloat({ min: 0 }).withMessage('Price must be a number greater than or equal to 0'),
+  body('readings').isArray({ min: 1 }).withMessage('Readings must be an array with at least one meter reading'),
+  body('readings.*.meter_id').isInt({ min: 1 }).withMessage('Each reading must have a valid meter_id (positive integer)'),
+  body('readings.*.value').isFloat({ min: 0 }).withMessage('Each reading value must be a number greater than or equal to 0'),
+  body('notes').optional().isString().trim().isLength({ max: 500 }).withMessage('Notes must be a string with maximum 500 characters'),
+  body('timestamp').optional({ values: 'falsy' }).isISO8601().withMessage('Timestamp must be a valid ISO8601 date/time (YYYY-MM-DDTHH:mm:ss)'),
   validate,
   (req, res) => {
     try {
@@ -76,13 +81,13 @@ router.post('/',
 
 // UPDATE session
 router.put('/:id',
-  param('id').isInt(),
-  body('price').isFloat({ min: 0 }),
-  body('readings').isArray({ min: 1 }),
-  body('readings.*.meter_id').isInt({ min: 1 }),
-  body('readings.*.value').isFloat({ min: 0 }),
-  body('notes').optional().isString().trim().isLength({ max: 500 }),
-  body('timestamp').optional().isISO8601(),
+  param('id').isInt().withMessage('Session ID must be a valid integer'),
+  body('price').isFloat({ min: 0 }).withMessage('Price must be a number greater than or equal to 0'),
+  body('readings').isArray({ min: 1 }).withMessage('Readings must be an array with at least one meter reading'),
+  body('readings.*.meter_id').isInt({ min: 1 }).withMessage('Each reading must have a valid meter_id (positive integer)'),
+  body('readings.*.value').isFloat({ min: 0 }).withMessage('Each reading value must be a number greater than or equal to 0'),
+  body('notes').optional().isString().trim().isLength({ max: 500 }).withMessage('Notes must be a string with maximum 500 characters'),
+  body('timestamp').optional({ values: 'falsy' }).isISO8601().withMessage('Timestamp must be a valid ISO8601 date/time (YYYY-MM-DDTHH:mm:ss)'),
   validate,
   (req, res) => {
     try {

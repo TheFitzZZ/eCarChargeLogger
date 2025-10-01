@@ -8,7 +8,12 @@ const router = express.Router();
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    // Format error messages for better display
+    const formattedErrors = errors.array().map(err => `${err.path || err.param}: ${err.msg}`);
+    return res.status(400).json({ 
+      error: formattedErrors.join('; '),
+      errors: errors.array() 
+    });
   }
   next();
 };
@@ -25,7 +30,7 @@ router.get('/', (req, res) => {
 
 // GET meter by ID
 router.get('/:id', 
-  param('id').isInt(),
+  param('id').isInt().withMessage('Meter ID must be a valid integer'),
   validate,
   (req, res) => {
     try {
@@ -42,7 +47,10 @@ router.get('/:id',
 
 // CREATE new meter
 router.post('/',
-  body('name').isString().trim().notEmpty().isLength({ max: 100 }),
+  body('name').isString().withMessage('Meter name must be a string')
+    .trim()
+    .notEmpty().withMessage('Meter name cannot be empty')
+    .isLength({ max: 100 }).withMessage('Meter name must be maximum 100 characters'),
   validate,
   (req, res) => {
     try {
@@ -59,8 +67,11 @@ router.post('/',
 
 // UPDATE meter
 router.put('/:id',
-  param('id').isInt(),
-  body('name').isString().trim().notEmpty().isLength({ max: 100 }),
+  param('id').isInt().withMessage('Meter ID must be a valid integer'),
+  body('name').isString().withMessage('Meter name must be a string')
+    .trim()
+    .notEmpty().withMessage('Meter name cannot be empty')
+    .isLength({ max: 100 }).withMessage('Meter name must be maximum 100 characters'),
   validate,
   (req, res) => {
     try {
@@ -80,7 +91,7 @@ router.put('/:id',
 
 // DELETE meter
 router.delete('/:id',
-  param('id').isInt(),
+  param('id').isInt().withMessage('Meter ID must be a valid integer'),
   validate,
   (req, res) => {
     try {

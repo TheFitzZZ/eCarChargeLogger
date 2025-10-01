@@ -172,7 +172,10 @@ function MainPage() {
       
       loadSessions();
     } catch (error) {
-      showSnackbar(error.response?.data?.error || 'Failed to add reading session', 'error');
+      console.error('Error adding session:', error);
+      console.error('Error response:', error.response);
+      const errorMessage = error.response?.data?.error || error.response?.data?.errors?.[0]?.msg || error.message || 'Failed to add reading session';
+      showSnackbar(errorMessage, 'error');
     }
   };
 
