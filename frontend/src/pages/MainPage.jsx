@@ -17,8 +17,13 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  DialogContentText,
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, Settings as SettingsIcon } from '@mui/icons-material';
 import { metersApi, sessionsApi } from '../api';
 import SessionsList from '../components/SessionsList';
 
@@ -28,7 +33,9 @@ function MainPage() {
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [newMeterDialogOpen, setNewMeterDialogOpen] = useState(false);
+  const [manageMeterDialogOpen, setManageMeterDialogOpen] = useState(false);
   const [newMeterName, setNewMeterName] = useState('');
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState({ open: false, meterId: null, meterName: '' });
   
   const [formData, setFormData] = useState({
     price: '',
@@ -196,19 +203,44 @@ function MainPage() {
     }
   };
 
+  const handleDeleteMeterClick = (meter) => {
+    setDeleteConfirmDialog({ open: true, meterId: meter.id, meterName: meter.name });
+  };
+
+  const handleDeleteMeterConfirm = async () => {
+    try {
+      await metersApi.delete(deleteConfirmDialog.meterId);
+      showSnackbar('Meter deleted successfully');
+      setDeleteConfirmDialog({ open: false, meterId: null, meterName: '' });
+      loadMeters();
+      loadSessions(); // Refresh sessions as they might be affected
+    } catch (error) {
+      showSnackbar(error.response?.data?.error || 'Failed to delete meter', 'error');
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">
           Dashboard
         </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<AddIcon />}
-          onClick={() => setNewMeterDialogOpen(true)}
-        >
-          Add Meter
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={() => setManageMeterDialogOpen(true)}
+          >
+            Manage Meters
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setNewMeterDialogOpen(true)}
+          >
+            Add Meter
+          </Button>
+        </Box>
       </Box>
 
       {meters.length === 0 ? (
@@ -380,6 +412,60 @@ function MainPage() {
         <DialogActions>
           <Button onClick={() => setNewMeterDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleAddMeter} variant="contained">Add</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={manageMeterDialogOpen} onClose={() => setManageMeterDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Manage Meters</DialogTitle>
+        <DialogContent>
+          {meters.length === 0 ? (
+            <Alert severity="info">No meters configured yet.</Alert>
+          ) : (
+            <List>
+              {meters.map((meter) => (
+                <ListItem
+                  key={meter.id}
+                  secondaryAction={
+                    <IconButton
+                      edge="end"
+                      aria-label="delete"
+                      onClick={() => handleDeleteMeterClick(meter)}
+                      color="error"
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  }
+                >
+                  <ListItemText
+                    primary={meter.name}
+                    secondary={`Unit: ${meter.unit} • Created: ${new Date(meter.created_at).toLocaleDateString('de-DE')}`}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManageMeterDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteConfirmDialog.open} onClose={() => setDeleteConfirmDialog({ open: false, meterId: null, meterName: '' })}>
+        <DialogTitle>Delete Meter</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete meter "<strong>{deleteConfirmDialog.meterName}</strong>"?
+            <br /><br />
+            This will also delete all readings associated with this meter and recalculate all affected sessions.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmDialog({ open: false, meterId: null, meterName: '' })}>
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteMeterConfirm} color="error" variant="contained">
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
 

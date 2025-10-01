@@ -224,6 +224,45 @@ class SessionModel {
     return transaction();
   }
 
+  static recalculateDeltas(sessionId) {
+    // Get session details
+    const session = db.prepare('SELECT timestamp FROM reading_sessions WHERE id = ?').get(sessionId);
+    if (!session) return;
+
+    const transaction = db.transaction(() => {
+      // Get all readings for this session
+      const readings = db.prepare(`
+        SELECT meter_id, value 
+        FROM readings 
+        WHERE session_id = ?
+      `).all(sessionId);
+
+      // Recalculate delta for each reading
+      for (const reading of readings) {
+        // Get previous reading for this meter
+        const prevReading = db.prepare(`
+          SELECT r.value 
+          FROM readings r
+          JOIN reading_sessions s ON r.session_id = s.id
+          WHERE r.meter_id = ? 
+            AND s.timestamp < ?
+          ORDER BY s.timestamp DESC
+          LIMIT 1
+        `).get(reading.meter_id, session.timestamp);
+
+        const newDelta = prevReading ? reading.value - prevReading.value : null;
+        
+        db.prepare(`
+          UPDATE readings 
+          SET delta = ? 
+          WHERE session_id = ? AND meter_id = ?
+        `).run(newDelta, sessionId, reading.meter_id);
+      }
+    });
+
+    transaction();
+  }
+
   static getStatistics(startDate = null, endDate = null) {
     let query = `
       SELECT 
