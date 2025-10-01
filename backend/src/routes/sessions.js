@@ -55,11 +55,12 @@ router.post('/',
   body('readings.*.meter_id').isInt({ min: 1 }),
   body('readings.*.value').isFloat({ min: 0 }),
   body('notes').optional().isString().trim().isLength({ max: 500 }),
+  body('timestamp').optional().isISO8601(),
   validate,
   (req, res) => {
     try {
-      const { price, readings, notes } = req.body;
-      const session = SessionModel.create(price, readings, notes || null);
+      const { price, readings, notes, timestamp } = req.body;
+      const session = SessionModel.create(price, readings, notes || null, timestamp || null);
       res.status(201).json(session);
     } catch (error) {
       if (error.message.includes('FOREIGN KEY constraint failed')) {
@@ -81,11 +82,12 @@ router.put('/:id',
   body('readings.*.meter_id').isInt({ min: 1 }),
   body('readings.*.value').isFloat({ min: 0 }),
   body('notes').optional().isString().trim().isLength({ max: 500 }),
+  body('timestamp').optional().isISO8601(),
   validate,
   (req, res) => {
     try {
-      const { price, readings, notes } = req.body;
-      const session = SessionModel.update(req.params.id, price, readings, notes || null);
+      const { price, readings, notes, timestamp } = req.body;
+      const session = SessionModel.update(req.params.id, price, readings, notes || null, timestamp || null);
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
       }

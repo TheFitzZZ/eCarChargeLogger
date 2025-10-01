@@ -56,15 +56,26 @@ class SessionModel {
     `).all(sessionId);
   }
 
-  static create(price, meterReadings, notes = null) {
+  static create(price, meterReadings, notes = null, timestamp = null) {
     const transaction = db.transaction(() => {
-      // Create session
-      const sessionResult = db.prepare(`
-        INSERT INTO reading_sessions (price, notes) 
-        VALUES (?, ?)
-      `).run(price, notes);
+      // Create session with optional timestamp
+      let sessionResult;
+      if (timestamp) {
+        sessionResult = db.prepare(`
+          INSERT INTO reading_sessions (price, notes, timestamp) 
+          VALUES (?, ?, ?)
+        `).run(price, notes, timestamp);
+      } else {
+        sessionResult = db.prepare(`
+          INSERT INTO reading_sessions (price, notes) 
+          VALUES (?, ?)
+        `).run(price, notes);
+      }
       
       const sessionId = sessionResult.lastInsertRowid;
+
+      // Get the session timestamp for delta calculation
+      const session = db.prepare('SELECT timestamp FROM reading_sessions WHERE id = ?').get(sessionId);
 
       // Add reading for each meter
       const insertReading = db.prepare(`
@@ -73,19 +84,33 @@ class SessionModel {
       `);
 
       for (const meterReading of meterReadings) {
-        // Get previous reading for this meter
+        // Get previous reading for this meter (before this session's timestamp)
         const prevReading = db.prepare(`
           SELECT r.value 
           FROM readings r
           JOIN reading_sessions s ON r.session_id = s.id
           WHERE r.meter_id = ?
+            AND s.timestamp < ?
           ORDER BY s.timestamp DESC
           LIMIT 1
-        `).get(meterReading.meter_id);
+        `).get(meterReading.meter_id, session.timestamp);
 
         const delta = prevReading ? meterReading.value - prevReading.value : null;
         
         insertReading.run(sessionId, meterReading.meter_id, meterReading.value, delta);
+      }
+
+      // Recalculate next session's deltas (if any)
+      const nextSession = db.prepare(`
+        SELECT id 
+        FROM reading_sessions 
+        WHERE timestamp > ? 
+        ORDER BY timestamp ASC 
+        LIMIT 1
+      `).get(session.timestamp);
+
+      if (nextSession) {
+        this.recalculateDeltas(nextSession.id);
       }
 
       return sessionId;
@@ -95,14 +120,25 @@ class SessionModel {
     return this.getById(sessionId);
   }
 
-  static update(id, price, meterReadings, notes) {
+  static update(id, price, meterReadings, notes, timestamp = null) {
     const transaction = db.transaction(() => {
-      // Update session
-      db.prepare(`
-        UPDATE reading_sessions 
-        SET price = ?, notes = ? 
-        WHERE id = ?
-      `).run(price, notes, id);
+      // Get old timestamp before update
+      const oldSession = db.prepare('SELECT timestamp FROM reading_sessions WHERE id = ?').get(id);
+      
+      // Update session with optional timestamp
+      if (timestamp) {
+        db.prepare(`
+          UPDATE reading_sessions 
+          SET price = ?, notes = ?, timestamp = ? 
+          WHERE id = ?
+        `).run(price, notes, timestamp, id);
+      } else {
+        db.prepare(`
+          UPDATE reading_sessions 
+          SET price = ?, notes = ? 
+          WHERE id = ?
+        `).run(price, notes, id);
+      }
 
       // Get current session timestamp for ordering
       const session = db.prepare('SELECT timestamp FROM reading_sessions WHERE id = ?').get(id);
@@ -131,39 +167,34 @@ class SessionModel {
         updateReading.run(meterReading.value, delta, id, meterReading.meter_id);
       }
 
-      // Recalculate next session's deltas
-      const nextSession = db.prepare(`
-        SELECT id 
-        FROM reading_sessions 
-        WHERE timestamp > ? 
-        ORDER BY timestamp ASC 
-        LIMIT 1
-      `).get(session.timestamp);
+      // If timestamp changed, we need to recalculate more sessions
+      const timestampChanged = timestamp && oldSession.timestamp !== session.timestamp;
+      
+      if (timestampChanged) {
+        // Recalculate all sessions after the old position
+        const affectedSessions = db.prepare(`
+          SELECT id 
+          FROM reading_sessions 
+          WHERE timestamp >= ?
+            AND id != ?
+          ORDER BY timestamp ASC
+        `).all(Math.min(oldSession.timestamp, session.timestamp), id);
 
-      if (nextSession) {
-        const nextReadings = db.prepare(`
-          SELECT meter_id, value 
-          FROM readings 
-          WHERE session_id = ?
-        `).all(nextSession.id);
+        for (const affectedSession of affectedSessions) {
+          this.recalculateDeltas(affectedSession.id);
+        }
+      } else {
+        // Just recalculate the next session as before
+        const nextSession = db.prepare(`
+          SELECT id 
+          FROM reading_sessions 
+          WHERE timestamp > ? 
+          ORDER BY timestamp ASC 
+          LIMIT 1
+        `).get(session.timestamp);
 
-        for (const nextReading of nextReadings) {
-          const prevValue = db.prepare(`
-            SELECT r.value 
-            FROM readings r
-            JOIN reading_sessions s ON r.session_id = s.id
-            WHERE r.meter_id = ? 
-              AND s.id = ?
-          `).get(nextReading.meter_id, id);
-
-          if (prevValue) {
-            const newDelta = nextReading.value - prevValue.value;
-            db.prepare(`
-              UPDATE readings 
-              SET delta = ? 
-              WHERE session_id = ? AND meter_id = ?
-            `).run(newDelta, nextSession.id, nextReading.meter_id);
-          }
+        if (nextSession) {
+          this.recalculateDeltas(nextSession.id);
         }
       }
     });

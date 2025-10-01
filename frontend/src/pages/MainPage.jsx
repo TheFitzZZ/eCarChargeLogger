@@ -41,9 +41,21 @@ function MainPage() {
     price: '',
     notes: '',
     meterValues: {},
+    timestamp: '',
   });
 
   const [lastPrice, setLastPrice] = useState(null);
+
+  // Format current datetime for datetime-local input
+  const getCurrentDateTime = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
 
   useEffect(() => {
     loadMeters();
@@ -131,11 +143,18 @@ function MainPage() {
         value: parseFloat(formData.meterValues[meter.id]),
       }));
 
-      await sessionsApi.create({
+      const sessionData = {
         price: parseFloat(formData.price),
         readings,
         notes: formData.notes || null,
-      });
+      };
+
+      // Add timestamp if provided, otherwise backend will use current time
+      if (formData.timestamp) {
+        sessionData.timestamp = new Date(formData.timestamp).toISOString();
+      }
+
+      await sessionsApi.create(sessionData);
       
       showSnackbar('Reading session added successfully');
       
@@ -147,7 +166,8 @@ function MainPage() {
       setFormData({ 
         price: formData.price, 
         notes: '', 
-        meterValues: resetValues 
+        meterValues: resetValues,
+        timestamp: ''
       });
       
       loadSessions();
@@ -295,6 +315,19 @@ function MainPage() {
                   <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
+                      type="datetime-local"
+                      label="Date & Time"
+                      name="timestamp"
+                      value={formData.timestamp}
+                      onChange={handleInputChange}
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Leave empty for current time"
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
                       required
                       type="number"
                       label="Price per kWh (€)"
@@ -306,7 +339,7 @@ function MainPage() {
                     />
                   </Grid>
 
-                  <Grid item xs={12} sm={6}>
+                  <Grid item xs={12}>
                     <TextField
                       fullWidth
                       multiline

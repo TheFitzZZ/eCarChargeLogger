@@ -37,6 +37,7 @@ function SessionsList({ sessions, meters, loading, onEdit, onDelete, onRefresh }
     price: '',
     notes: '',
     meterValues: {},
+    timestamp: '',
   });
 
   const handleEditClick = (session) => {
@@ -46,11 +47,18 @@ function SessionsList({ sessions, meters, loading, onEdit, onDelete, onRefresh }
     session.readings.forEach(reading => {
       meterValues[reading.meter_id] = reading.value.toString();
     });
+
+    // Format timestamp for datetime-local input
+    const timestamp = new Date(session.timestamp);
+    const formattedTimestamp = new Date(timestamp.getTime() - timestamp.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
     
     setEditFormData({
       price: session.price.toString(),
       notes: session.notes || '',
       meterValues,
+      timestamp: formattedTimestamp,
     });
     setEditDialogOpen(true);
   };
@@ -67,11 +75,18 @@ function SessionsList({ sessions, meters, loading, onEdit, onDelete, onRefresh }
         value: parseFloat(editFormData.meterValues[meterId]),
       }));
 
-      onEdit(selectedSession.id, {
+      const updateData = {
         price: parseFloat(editFormData.price),
         readings,
         notes: editFormData.notes || null,
-      });
+      };
+
+      // Add timestamp if provided
+      if (editFormData.timestamp) {
+        updateData.timestamp = new Date(editFormData.timestamp).toISOString();
+      }
+
+      onEdit(selectedSession.id, updateData);
       setEditDialogOpen(false);
     }
   };
@@ -269,6 +284,16 @@ function SessionsList({ sessions, meters, loading, onEdit, onDelete, onRefresh }
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                type="datetime-local"
+                label="Date & Time"
+                value={editFormData.timestamp}
+                onChange={(e) => setEditFormData({ ...editFormData, timestamp: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
                 required
                 type="number"
                 label="Price per kWh (€)"
@@ -277,7 +302,7 @@ function SessionsList({ sessions, meters, loading, onEdit, onDelete, onRefresh }
                 inputProps={{ step: '0.0001', min: '0' }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 multiline
