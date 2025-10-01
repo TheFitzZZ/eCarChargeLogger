@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: meter-tracker-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - ./database:/app/database
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/database/meter_tracker.db
+      - PORT=3001
+      - FRONTEND_URL=http://localhost:${FRONTEND_PORT:-3000}
+    networks:
+      - meter-tracker-network
+
+  frontend:
+    build: ./frontend
+    container_name: meter-tracker-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:${BACKEND_PORT:-3001}
+    depends_on:
+      - backend
+    networks:
+      - meter-tracker-network
+
+networks:
+  meter-tracker-network:
+    driver: bridge
+
+volumes:
+  database:
