@@ -2,9 +2,11 @@ FROM node:20-alpine as build
 
 WORKDIR /app
 
+# Copy package files
 COPY package*.json ./
 
-RUN npm install
+# Install ALL dependencies (including devDependencies needed for build)
+RUN npm install --no-audit --verbose
 
 COPY . .
 
