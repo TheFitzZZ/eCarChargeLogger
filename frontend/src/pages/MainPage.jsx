@@ -37,15 +37,6 @@ function MainPage() {
   const [newMeterName, setNewMeterName] = useState('');
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState({ open: false, meterId: null, meterName: '' });
   
-  const [formData, setFormData] = useState({
-    price: '',
-    notes: '',
-    meterValues: {},
-    timestamp: '',
-  });
-
-  const [lastPrice, setLastPrice] = useState(null);
-
   // Format current datetime for datetime-local input
   const getCurrentDateTime = () => {
     const now = new Date();
@@ -56,6 +47,15 @@ function MainPage() {
     const minutes = String(now.getMinutes()).padStart(2, '0');
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
+
+  const [formData, setFormData] = useState({
+    price: '',
+    notes: '',
+    meterValues: {},
+    timestamp: getCurrentDateTime(),
+  });
+
+  const [lastPrice, setLastPrice] = useState(null);
 
   useEffect(() => {
     loadMeters();
@@ -84,10 +84,24 @@ function MainPage() {
       const response = await sessionsApi.getAll(50);
       setSessions(response.data);
       
-      // Set last price from most recent session
+      // Set last price and meter values from most recent session
       if (response.data.length > 0) {
-        setLastPrice(response.data[0].price);
-        setFormData((prev) => ({ ...prev, price: response.data[0].price.toString() }));
+        const lastSession = response.data[0];
+        setLastPrice(lastSession.price);
+        
+        // Prepopulate meter values from last session's readings
+        const lastMeterValues = {};
+        if (lastSession.readings) {
+          lastSession.readings.forEach(reading => {
+            lastMeterValues[reading.meter_id] = reading.value.toString();
+          });
+        }
+        
+        setFormData((prev) => ({
+          ...prev,
+          price: lastSession.price.toString(),
+          meterValues: { ...prev.meterValues, ...lastMeterValues },
+        }));
       }
     } catch (error) {
       showSnackbar('Failed to load sessions', 'error');
@@ -158,17 +172,12 @@ function MainPage() {
       
       showSnackbar('Reading session added successfully');
       
-      // Reset meter values but keep price
-      const resetValues = {};
-      meters.forEach(meter => {
-        resetValues[meter.id] = '';
-      });
-      setFormData({ 
-        price: formData.price, 
+      // Keep meter values and price for quick re-entry, reset notes and refresh timestamp
+      setFormData(prev => ({ 
+        ...prev, 
         notes: '', 
-        meterValues: resetValues,
-        timestamp: ''
-      });
+        timestamp: getCurrentDateTime(),
+      }));
       
       loadSessions();
     } catch (error) {
@@ -324,7 +333,7 @@ function MainPage() {
                       value={formData.timestamp}
                       onChange={handleInputChange}
                       InputLabelProps={{ shrink: true }}
-                      helperText="Leave empty for current time"
+                      helperText="Adjust if needed"
                     />
                   </Grid>
 
